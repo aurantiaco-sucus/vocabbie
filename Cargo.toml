@@ -1,0 +1,3 @@
+[workspace]
+members = [ "vcbe-core","vcbe-gen"]
+resolver = "2"
