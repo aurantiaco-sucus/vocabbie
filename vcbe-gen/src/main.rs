@@ -75,6 +75,9 @@ fn main_zero_freq() {
     fs::write("dict.rmp.zstd", rmp_zstd).unwrap()
 }
 
+fn main_freq_counter() {
+}
+
 fn main() {
     env_logger::init();
     info!("Vocabble Database Generation Utility");
