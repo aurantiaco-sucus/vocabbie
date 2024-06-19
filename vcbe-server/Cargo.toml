@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.21"
-env_logger = "0.11.3"
-rocket = "0.5.1"
+rocket = { version = "0.5.1", features = ["json"] }
+rocket_db_pools = { version = "0.2.0", features = ["sqlx_mysql"] }
+once_cell = "1.19.0"
 
 vcbe-core = { path = "../vcbe-core" }
+rand = "0.8.5"

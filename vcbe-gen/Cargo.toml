@@ -14,5 +14,7 @@ rapidfuzz = "0.5.0"
 indicatif = "0.17.8"
 rayon = "1.10.0"
 # mysql = "25.0.1"
+sqlx = { version = "0.7.4", features = ["mysql", "runtime-async-std"]}
+async-std = "1.12.0"
 
 vcbe-core = { path = "../vcbe-core" }

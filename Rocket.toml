@@ -1,0 +1,2 @@
+[default.databases.primary]
+url = "mysql://scott:123456@localhost:3306/vocabbie"

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 
 #[derive(serde::Serialize, serde:: Deserialize)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -48,4 +49,11 @@ pub struct Row {
     pub sim: Vec<usize>,
     pub incl: Vec<usize>,
     pub incl_rev: Vec<usize>,
+}
+
+#[derive(serde::Serialize, serde:: Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Message {
+    pub session: u32,
+    pub details: HashMap<String, String>,
 }
