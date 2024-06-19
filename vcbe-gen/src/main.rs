@@ -93,7 +93,7 @@ fn main_entry_gen() {
         .zip(incl)
         .zip(incl_rev)
         .map(|((((word, level), lev_dist), incl), incl_rev)| {
-            vcbe_core::Entry {
+            Entry {
                 word: word.word,
                 head: word.head,
                 freq: word.freq,
@@ -125,13 +125,13 @@ fn main_entry_parts() -> (Vec<Word>, Vec<u8>) {
     const PARTS: [usize; 8] = [1023, 1902, 3595, 6562, 10251, 13612, 12300, 18933];
     let mut words: Vec<Word> = rmp_serde::from_slice(&zstd::decode_all(
         Cursor::new(fs::read("dict.rmp.zstd").unwrap())).unwrap()).unwrap();
-    words.sort_unstable_by_key(|x| x.freq);
+    words.sort_unstable_by_key(|x| (x.freq as i64));
+    words.reverse();
     let mut parts = Vec::with_capacity(8);
     let mut begin = 0;
     for len in PARTS {
         let end = begin + len;
         let mut part = words[begin..end].to_vec();
-        part.sort_unstable_by_key(|x| x.freq);
         parts.push(part);
         begin = end;
     }
@@ -256,6 +256,7 @@ create table words (
 
 #[allow(unused)]
 async fn main_database_gen() {
+    info!("Populating dictionary table.");
     let mut conn = sqlx::MySqlConnection::connect(
         "mysql://scott:123456@localhost:3306/vocabbie").await.unwrap();
     sqlx::query(TABLE_DROP).execute(&mut conn).await.unwrap();
@@ -288,6 +289,15 @@ async fn main_database_gen() {
 fn main() {
     env_logger::init();
     info!("Vocabble Database Generation Utility");
+    // migrate from BNC_COCA_EN2CN to internal format
+    main_migrate();
+    // filter out zero frequency words
+    main_zero_freq();
+    // collect characteristics & generate entries
+    main_entry_gen();
+    // generate rows
+    main_row_gen();
+    // populate database
     async_std::task::block_on(main_database_gen());
 }
 
