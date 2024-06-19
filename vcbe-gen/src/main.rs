@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::{fs, iter};
 use std::io::Cursor;
 use log::info;
 
 #[derive(serde::Deserialize)]
 #[allow(non_snake_case)]
-struct Word {
+struct OrgWord {
     word: String,
     headword: String,
     frequency: String,
@@ -37,7 +37,7 @@ fn main_migrate() {
         .map(|x| x.unwrap())
         .map(|x| fs::read(x.path()).unwrap())
         .map(|x| serde_json::from_slice(&x).unwrap())
-        .collect::<Vec<Word>>();
+        .collect::<Vec<OrgWord>>();
     info!("Read {} words from BNC_COCA_EN2CN.", words.len());
     info!("Migrating to internal format.");
     let words = words.into_iter().map(migrate).collect::<Vec<vcbe_core::Word>>();
@@ -75,15 +75,47 @@ fn main_zero_freq() {
     fs::write("dict.rmp.zstd", rmp_zstd).unwrap()
 }
 
-fn main_freq_counter() {
+fn main_entry_gen() {
+    let words = main_entry_gen_parts();
+}
+
+fn main_entry_gen_parts() -> Vec<(vcbe_core::Word, u8)> {
+    const PARTS: [usize; 6] = [1023, 1902, 3595, 6562, 36163, 31233];
+    let mut words: Vec<vcbe_core::Word> = rmp_serde::from_slice(&zstd::decode_all(
+        Cursor::new(fs::read("dict.rmp.zstd").unwrap())).unwrap()).unwrap();
+    words.sort_unstable_by_key(|x| x.freq);
+    let mut parts = Vec::with_capacity(6);
+    let mut begin = 0;
+    for len in PARTS {
+        let end = begin + len;
+        let mut part = words[begin..end].to_vec();
+        part.sort_unstable_by_key(|x| x.freq);
+        parts.push(part);
+        begin = end;
+    }
+    assert_eq!(begin, words.len());
+    let density = parts.iter()
+        .map(|x| x.iter().map(|x| x.freq as u64).sum::<u64>())
+        .collect::<Vec<_>>();
+    info!("Density: {:?}", density);
+    parts.into_iter()
+        .enumerate()
+        .flat_map(|(i, x)| x.into_iter()
+            .zip(iter::repeat(i as u8)))
+        .collect::<Vec<_>>()
+}
+
+fn main_entry_gen_similar() {
+    
 }
 
 fn main() {
     env_logger::init();
     info!("Vocabble Database Generation Utility");
+    main_entry_gen();
 }
 
-fn migrate(word: Word) -> vcbe_core::Word {
+fn migrate(word: OrgWord) -> vcbe_core::Word {
     vcbe_core::Word {
         word: word.word,
         head: word.headword,
