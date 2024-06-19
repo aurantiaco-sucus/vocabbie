@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
-use std::{fs, iter};
-use std::fmt::Write;
-use std::io::Cursor;
+use std::{fs, io, iter};
+use std::io::{Cursor, Write};
 use indicatif::{ProgressState, ProgressStyle};
 use log::info;
-use vcbe_core::Word;
+// use mysql::Pool;
+// use mysql::prelude::Queryable;
+use vcbe_core::{Entry, Word};
 use rapidfuzz::distance::levenshtein;
+use rayon::iter::repeat;
 use rayon::prelude::*;
 
 #[derive(serde::Deserialize)]
@@ -85,6 +87,37 @@ fn main_entry_gen() {
     let lev_dist = main_entry_lev_dist(&words);
     let incl = main_entry_incl(&words);
     let incl_rev = main_entry_incl_rev(&incl);
+    let entries = words.into_iter()
+        .zip(levels)
+        .zip(lev_dist)
+        .zip(incl)
+        .zip(incl_rev)
+        .map(|((((word, level), lev_dist), incl), incl_rev)| {
+            vcbe_core::Entry {
+                word: word.word,
+                head: word.head,
+                freq: word.freq,
+                list: word.list,
+                p_us: word.p_us,
+                p_uk: word.p_uk,
+                exam: word.exam,
+                desc: word.desc,
+                phr: word.phr,
+                phr_desc: word.phr_desc,
+                sen: word.sen,
+                sen_desc: word.sen_desc,
+                lv: level,
+                sim: lev_dist,
+                incl,
+                incl_rev,
+            }
+        })
+        .collect::<Vec<_>>();
+    let rmp = rmp_serde::to_vec(&entries).unwrap();
+    info!("Compressing RMP binary.");
+    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 19).unwrap();
+    info!("Saving compressed RMP dictionary.");
+    fs::write("dict_full.rmp.zstd", rmp_zstd).unwrap()
 }
 
 fn main_entry_parts() -> (Vec<Word>, Vec<u8>) {
@@ -116,19 +149,23 @@ fn main_entry_parts() -> (Vec<Word>, Vec<u8>) {
     (words, levels)
 }
 
-fn main_entry_lev_dist(words: &[Word]) -> Vec<Vec<(usize, usize)>> {
+fn main_entry_lev_dist(words: &[Word]) -> Vec<Vec<usize>> {
     info!("Collecting similar words.");
     let args = levenshtein::Args::default()
         .score_cutoff(3)
         .score_hint(3);
     let pb = indicatif::ProgressBar::new(words.len() as u64);
     words.par_iter().map(|word| {
-        let similar = words.iter()
+        let mut similar = words.iter()
             .enumerate()
             .filter_map(|(i, x)|
             levenshtein::distance_with_args(word.word.chars(), x.word.chars(), &args)
                 .map(|y| (i, y)))
             .take(50)
+            .collect::<Vec<_>>();
+        similar.sort_unstable_by_key(|x| x.1);
+        let similar = similar.into_iter()
+            .map(|x| x.0)
             .collect::<Vec<_>>();
         pb.inc(1);
         similar
@@ -176,10 +213,74 @@ fn main_entry_incl_rev(incl: &[Vec<usize>]) -> Vec<Vec<usize>> {
     incl_rev
 }
 
+fn main_row_gen() {
+    let entries: Vec<Entry> = rmp_serde::from_slice(&zstd::decode_all(
+        Cursor::new(fs::read("dict_full.rmp.zstd").unwrap())).unwrap()).unwrap();
+    let rows = entries.clone().into_iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            vcbe_core::Row {
+                id: i,
+                word: entry.word,
+                freq: entry.freq,
+                desc: entry.desc,
+                lv: entry.lv,
+                sim: entry.sim,
+                incl: entry.incl,
+                incl_rev: entry.incl_rev,
+            }
+        })
+        .collect::<Vec<_>>();
+    let rmp = rmp_serde::to_vec(&rows).unwrap();
+    fs::write("rows.rmp", rmp).unwrap();
+}
+
+const TABLE_CREATION: &str = r#"
+drop table if exists words;
+create table words (
+    id integer primary key,
+    word text not null,
+    freq integer not null,
+    des text not null,
+    lv integer not null,
+    sim text not null,
+    incl text not null,
+    incl_rev text not null
+);
+"#;
+
+// fn main_database_gen() {
+//     let url = "mysql://scott:123456@localhost:3306/vocabbie";
+//     let pool = Pool::new(url).unwrap();
+//     let mut conn = pool.get_conn().unwrap();
+//     conn.query_drop(TABLE_CREATION).unwrap();
+//     let rows: Vec<vcbe_core::Row> = rmp_serde::from_slice(&fs::read("rows.rmp").unwrap()).unwrap();
+//     let pb = indicatif::ProgressBar::new(rows.len() as u64);
+//     for row in rows {
+//         let sim = row.sim.iter()
+//             .map(|x| x.to_string())
+//             .collect::<Vec<_>>()
+//             .join(",");
+//         let incl = row.incl.iter()
+//             .map(|x| x.to_string())
+//             .collect::<Vec<_>>()
+//             .join(",");
+//         let incl_rev = row.incl_rev.iter()
+//             .map(|x| x.to_string())
+//             .collect::<Vec<_>>()
+//             .join(",");
+//         conn.exec_drop("insert into words (id, word, freq, des, lv, sim, incl, incl_rev)
+//             values (?, ?, ?, ?, ?, ?, ?, ?)",
+//             (row.id, row.word, row.freq, row.desc.join(";;;"), 
+//              row.lv, sim, incl, incl_rev)).unwrap();
+//         pb.inc(1);
+//     }
+// }
+
 fn main() {
     env_logger::init();
     info!("Vocabble Database Generation Utility");
-    main_entry_gen();
+    // main_database_gen();
 }
 
 fn migrate(word: OrgWord) -> Word {

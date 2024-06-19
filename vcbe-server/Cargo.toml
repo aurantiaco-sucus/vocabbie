@@ -1,0 +1,11 @@
+[package]
+name = "vcbe-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4.21"
+env_logger = "0.11.3"
+rocket = "0.5.1"
+
+vcbe-core = { path = "../vcbe-core" }

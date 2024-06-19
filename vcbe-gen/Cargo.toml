@@ -13,5 +13,6 @@ zstd = "0.13.1"
 rapidfuzz = "0.5.0"
 indicatif = "0.17.8"
 rayon = "1.10.0"
+# mysql = "25.0.1"
 
 vcbe-core = { path = "../vcbe-core" }
