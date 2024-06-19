@@ -32,4 +32,7 @@ pub struct Entry {
     pub sen: Vec<String>,
     pub sen_desc: Vec<String>,
     pub lv: u8,
+    pub sim_str: Vec<usize>,
+    pub sim_incl: Vec<usize>,
+    pub sim_rev: Vec<usize>,
 }

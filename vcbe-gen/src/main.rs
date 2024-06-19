@@ -1,7 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::{fs, iter};
+use std::fmt::Write;
 use std::io::Cursor;
+use indicatif::{ProgressState, ProgressStyle};
 use log::info;
+use vcbe_core::Word;
+use rapidfuzz::distance::levenshtein;
+use rayon::prelude::*;
 
 #[derive(serde::Deserialize)]
 #[allow(non_snake_case)]
@@ -40,7 +45,7 @@ fn main_migrate() {
         .collect::<Vec<OrgWord>>();
     info!("Read {} words from BNC_COCA_EN2CN.", words.len());
     info!("Migrating to internal format.");
-    let words = words.into_iter().map(migrate).collect::<Vec<vcbe_core::Word>>();
+    let words = words.into_iter().map(migrate).collect::<Vec<Word>>();
     info!("Serializing into MessagePack format.");
     let rmp = rmp_serde::to_vec(&words).unwrap();
     info!("Compressing RMP binary.");
@@ -50,7 +55,7 @@ fn main_migrate() {
 }
 
 fn main_zero_freq() {
-    let words: Vec<vcbe_core::Word> = rmp_serde::from_slice(&zstd::decode_all(
+    let words: Vec<Word> = rmp_serde::from_slice(&zstd::decode_all(
         Cursor::new(fs::read("dict.rmp.zstd").unwrap())).unwrap()).unwrap();
     let zero_freq = words.iter()
         .filter(|x| x.freq == 0)
@@ -76,15 +81,18 @@ fn main_zero_freq() {
 }
 
 fn main_entry_gen() {
-    let words = main_entry_gen_parts();
+    let (words, levels) = main_entry_parts();
+    let lev_dist = main_entry_lev_dist(&words);
+    let incl = main_entry_incl(&words);
+    let incl_rev = main_entry_incl_rev(&incl);
 }
 
-fn main_entry_gen_parts() -> Vec<(vcbe_core::Word, u8)> {
-    const PARTS: [usize; 6] = [1023, 1902, 3595, 6562, 36163, 31233];
-    let mut words: Vec<vcbe_core::Word> = rmp_serde::from_slice(&zstd::decode_all(
+fn main_entry_parts() -> (Vec<Word>, Vec<u8>) {
+    const PARTS: [usize; 8] = [1023, 1902, 3595, 6562, 10251, 13612, 12300, 18933];
+    let mut words: Vec<Word> = rmp_serde::from_slice(&zstd::decode_all(
         Cursor::new(fs::read("dict.rmp.zstd").unwrap())).unwrap()).unwrap();
     words.sort_unstable_by_key(|x| x.freq);
-    let mut parts = Vec::with_capacity(6);
+    let mut parts = Vec::with_capacity(8);
     let mut begin = 0;
     for len in PARTS {
         let end = begin + len;
@@ -98,15 +106,74 @@ fn main_entry_gen_parts() -> Vec<(vcbe_core::Word, u8)> {
         .map(|x| x.iter().map(|x| x.freq as u64).sum::<u64>())
         .collect::<Vec<_>>();
     info!("Density: {:?}", density);
-    parts.into_iter()
+    let parts = parts.into_iter()
         .enumerate()
         .flat_map(|(i, x)| x.into_iter()
             .zip(iter::repeat(i as u8)))
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+    let levels = parts.iter().map(|x| x.1).collect::<Vec<_>>();
+    let words = parts.into_iter().map(|x| x.0).collect::<Vec<_>>();
+    (words, levels)
 }
 
-fn main_entry_gen_similar() {
-    
+fn main_entry_lev_dist(words: &[Word]) -> Vec<Vec<(usize, usize)>> {
+    info!("Collecting similar words.");
+    let args = levenshtein::Args::default()
+        .score_cutoff(3)
+        .score_hint(3);
+    let pb = indicatif::ProgressBar::new(words.len() as u64);
+    words.par_iter().map(|word| {
+        let similar = words.iter()
+            .enumerate()
+            .filter_map(|(i, x)|
+            levenshtein::distance_with_args(word.word.chars(), x.word.chars(), &args)
+                .map(|y| (i, y)))
+            .take(50)
+            .collect::<Vec<_>>();
+        pb.inc(1);
+        similar
+    }).collect::<Vec<_>>()
+}
+
+fn main_entry_incl(words: &[Word]) -> Vec<Vec<usize>> {
+    info!("Collecting inter-entry inclusions.");
+    let mut words = words.into_iter().enumerate().collect::<Vec<_>>();
+    words.sort_unstable_by_key(|(i, w)| w.word.len());
+    let shortest_len = words[0].1.word.len();
+    let longest_len = words.last().unwrap().1.word.len();
+    let first_longer_idx = (0..=(longest_len-shortest_len))
+        .map(|x| {
+            let len = x + shortest_len;
+            let index = words.iter()
+                .position(|(i, w)| w.word.len() > len);
+            index.unwrap_or(usize::MAX)
+        })
+        .collect::<Vec<_>>();
+    let pb = indicatif::ProgressBar::new(words.len() as u64);
+    words.par_iter().map(|(ii, w)| {
+        let len = w.word.len();
+        let begin = first_longer_idx[len - shortest_len];
+        let mut res = if begin != usize::MAX && len > 2 {
+            words[begin..].iter().filter_map(|(i, ww)| {
+                if ww.word.contains(&w.word) && ii != i { Some(*i) } else { None }
+            }).take(50).collect()
+        } else {
+            Vec::new()
+        };
+        pb.inc(1);
+        res
+    }).collect()
+}
+
+fn main_entry_incl_rev(incl: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    info!("Collecting reverse inter-entry inclusions.");
+    let mut incl_rev = vec![Vec::new(); incl.len()];
+    incl.iter().enumerate().for_each(|(i, x)| {
+        x.iter().for_each(|&j| {
+            incl_rev[j].push(i);
+        });
+    });
+    incl_rev
 }
 
 fn main() {
@@ -115,8 +182,8 @@ fn main() {
     main_entry_gen();
 }
 
-fn migrate(word: OrgWord) -> vcbe_core::Word {
-    vcbe_core::Word {
+fn migrate(word: OrgWord) -> Word {
+    Word {
         word: word.word,
         head: word.headword,
         freq: word.frequency.parse().unwrap(),
