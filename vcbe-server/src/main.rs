@@ -1,4 +1,5 @@
 mod standard;
+mod recall;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
@@ -105,6 +106,7 @@ impl DerefMut for Session {
 
 pub enum SessionInner {
     Standard(standard::Session),
+    Recall(recall::Session),
 }
 
 impl Session {
@@ -151,6 +153,7 @@ pub async fn start(data: Json<Message>, db: BaseConn) -> Json<Message> {
         Some(kind) => {
             let session = Session::create_with(match kind {
                 "standard" => SessionInner::Standard(standard::create(db).await),
+                "recall" => SessionInner::Recall(recall::create(db).await),
                 _ => return Json(Message {
                     session: 0,
                     details: HashMap::from([
@@ -181,6 +184,7 @@ pub async fn state(data: Json<Message>, db: BaseConn) -> Json<Message> {
             let ses = ses.read().await;
             match &ses.inner {
                 SessionInner::Standard(ses) => standard::state(ses, db).await,
+                SessionInner::Recall(ses) => recall::state(ses, db).await,
             }
         }
     }
@@ -208,6 +212,8 @@ pub async fn submit(data: Json<Message>, db: BaseConn) -> Json<Message> {
                 match &mut ses.inner {
                     SessionInner::Standard(ses) => 
                         standard::submit(ses, db, data).await,
+                    SessionInner::Recall(ses) =>
+                        recall::submit(ses, db, data).await,
                 }
             };
             if term {

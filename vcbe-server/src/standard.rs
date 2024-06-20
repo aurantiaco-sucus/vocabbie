@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Range;
 use rand::prelude::*;
 use rocket::serde::json::Json;
 use rocket_db_pools::{Connection, sqlx};
@@ -176,7 +175,8 @@ pub async fn submit(
                         ]),
                     }), false)
                 } else {
-                    let (result, db) = result(session, db).await;
+                    let (result, db) = result_common(
+                        &session.history, db).await;
                     (Json(Message {
                         session: 0,
                         details: result,
@@ -200,10 +200,7 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     } else {
         (((ordinal - 24) / 2) % 8, ordinal % 2 == 1)
     };
-    let mut current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
-    while session.history.iter().any(|(x, _)| *x == current_word) {
-        current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
-    }
+    let current_word = choose_word_common(&session.history, lv);
     let (related, mut db) = related(current_word, db).await;
     let (question, candidates, answer, db) = if is_cn2en {
         let ((candidates, answer, question), db) = 
@@ -225,10 +222,20 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     db
 }
 
-async fn result(session: &Session, mut db: BaseConn) -> WithConn<HashMap<String, String>> {
+pub fn choose_word_common(history: &[(u32, bool)], lv: usize) -> u32 {
+    let mut current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
+    while history.iter().any(|(x, _)| *x == current_word) {
+        current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
+    }
+    current_word
+}
+
+pub async fn result_common(
+    history: &[(u32, bool)], mut db: Connection<Base>
+) -> WithConn<HashMap<String, String>> {
     let mut result = HashMap::new();
-    let mut evidences = Vec::with_capacity(session.history.len());
-    for (i, correct) in &session.history {
+    let mut evidences = Vec::with_capacity(history.len());
+    for (i, correct) in history {
         let row = sqlx::query("SELECT freq, lv FROM words WHERE id = ?")
             .bind(i).fetch_one(&mut **db).await.unwrap();
         let freq: u32 = row.get::<i32, _>(0) as u32;

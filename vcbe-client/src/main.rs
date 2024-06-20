@@ -16,6 +16,14 @@ fn main() {
 }
 
 fn cli() {
+    match args().nth(2).unwrap().as_str() {
+        "std" => cli_std(),
+        "rcl" => cli_rcl(),
+        _ => {}
+    }
+}
+
+fn cli_std() {
     let client = Client::new();
     let session = std_start(&client);
     loop {
@@ -57,6 +65,51 @@ fn cli() {
             std_submit(&client, session, StdSubmit::Choose(choice)), 
             StdSubmitResult::Choose(true));
         println!("!\tAnswer {}.", if correct { "correct" } else { "incorrect" });
+    }
+}
+
+fn cli_rcl() {
+    let client = Client::new();
+    let session = rcl_start(&client);
+    loop {
+        let state = rcl_state(&client, session);
+        println!("?\t{}", state.question);
+        println!("y\tYes");
+        println!("n\tNo");
+        if state.result_available {
+            println!("x\tFinish");
+        }
+        print!(">\t");
+        std::io::stdout().flush().unwrap();
+        let choice = loop {
+            let mut choice = String::new();
+            std::io::stdin().read_line(&mut choice).unwrap();
+            match choice.trim() {
+                "y" => break 0,
+                "n" => break 1,
+                "x" if state.result_available => break 2,
+                _ => continue,
+            }
+        };
+        match choice {
+            0 => {
+                let _ = rcl_submit(&client, session, RclSubmit::Choose(true));
+            }
+            1 => {
+                let _ = rcl_submit(&client, session, RclSubmit::Choose(false));
+            }
+            2 => {
+                let result = rcl_submit(&client, session, RclSubmit::Finish);
+                match result {
+                    RclSubmitResult::Result { uls, rfwls } => {
+                        println!("!\tULS: {}, RFWLS: {}", uls, rfwls);
+                        break;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -140,6 +193,83 @@ fn std_submit(client: &Client, session: u32, action: StdSubmit) -> StdSubmitResu
                 return StdSubmitResult::NotEnough;
             }
             StdSubmitResult::Result {
+                uls: resp.details["uls"].parse().unwrap(),
+                rfwls: resp.details["rfwls"].parse().unwrap(),
+            }
+        }
+    }
+}
+
+fn rcl_start(client: &Client) -> u32 {
+    let resp: Message = client.post("http://localhost:8000/start")
+        .json(&Message {
+            session: 0,
+            details: HashMap::from([
+                ("kind".to_string(), "recall".to_string()),
+            ]),
+        })
+        .send().unwrap()
+        .json().unwrap();
+    assert_ne!(resp.session, 0);
+    resp.session
+}
+
+struct RclState {
+    result_available: bool,
+    question: String
+}
+
+fn rcl_state(client: &Client, session: u32) -> RclState {
+    let resp: Message = client.get("http://localhost:8000/state")
+        .json(&Message {
+            session,
+            details: Default::default(),
+        })
+        .send().unwrap()
+        .json().unwrap();
+    let result_available = resp.details["result_available"] == "true";
+    let question = resp.details["question"].clone();
+    RclState { result_available, question }
+}
+
+enum RclSubmit {
+    Choose(bool),
+    Finish,
+}
+
+enum RclSubmitResult {
+    Choose,
+    NotEnough,
+    Result {
+        uls: u32,
+        rfwls: u32,
+    },
+}
+
+fn rcl_submit(client: &Client, session: u32, action: RclSubmit) -> RclSubmitResult {
+    let detail = match action {
+        RclSubmit::Choose(recall) => HashMap::from([
+            ("action".to_string(), "choose".to_string()),
+            ("recall".to_string(), recall.to_string()),
+        ]),
+        RclSubmit::Finish => HashMap::from([
+            ("action".to_string(), "finish".to_string()),
+        ])
+    };
+    let resp: Message = client.post("http://localhost:8000/submit")
+        .json(&Message {
+            session,
+            details: detail,
+        })
+        .send().unwrap()
+        .json().unwrap();
+    match action {
+        RclSubmit::Choose(_) => RclSubmitResult::Choose,
+        RclSubmit::Finish => {
+            if resp.details.get("error") == Some(&"not enough questions answered".to_string()) {
+                return RclSubmitResult::NotEnough;
+            }
+            RclSubmitResult::Result {
                 uls: resp.details["uls"].parse().unwrap(),
                 rfwls: resp.details["rfwls"].parse().unwrap(),
             }
