@@ -103,14 +103,21 @@ impl Session {
     pub async fn access(id: u32) -> Option<Arc<RwLock<Self>>> {
         SESSIONS.read().await.get(&id).cloned()
     }
+    
+    pub async fn terminate(id: u32) {
+        SESSIONS.write().await.remove(&id);
+    }
 }
 
 #[derive(Database)]
 #[database("primary")]
 pub struct Base(sqlx::MySqlPool);
 
+pub type BaseConn = Connection<Base>;
+pub type WithConn<T> = (T, BaseConn);
+
 #[post("/start", format = "json", data = "<data>")]
-pub async fn start(data: Json<Message>, db: Connection<Base>) -> Json<Message> {
+pub async fn start(data: Json<Message>, db: BaseConn) -> Json<Message> {
     match data.details.get("kind").map(|x| x.as_str()) {
         None => Json(Message {
             session: 0,
@@ -121,7 +128,9 @@ pub async fn start(data: Json<Message>, db: Connection<Base>) -> Json<Message> {
                 "standard" => SessionInner::Standard(standard::create(db).await),
                 _ => return Json(Message {
                     session: 0,
-                    details: Default::default(),
+                    details: HashMap::from([
+                        ("error".to_string(), "invalid session kind".to_string())
+                    ])
                 })
             }).await;
             let id = session.read().await.id;
@@ -134,7 +143,7 @@ pub async fn start(data: Json<Message>, db: Connection<Base>) -> Json<Message> {
 }
 
 #[get("/state", format = "json", data = "<data>")]
-pub async fn state(data: Json<Message>, db: Connection<Base>) -> Json<Message> {
+pub async fn state(data: Json<Message>, db: BaseConn) -> Json<Message> {
     match Session::access(data.session).await {
         None => Json(Message {
             session: 0,
@@ -150,17 +159,25 @@ pub async fn state(data: Json<Message>, db: Connection<Base>) -> Json<Message> {
 }
 
 #[post("/submit", format = "json", data = "<data>")]
-pub async fn submit(data: Json<Message>, db: Connection<Base>) -> Json<Message> {
-    match Session::access(data.session).await {
+pub async fn submit(data: Json<Message>, db: BaseConn) -> Json<Message> {
+    let sid = data.session;
+    match Session::access(sid).await {
         None => Json(Message {
             session: 0,
             details: Default::default(),
         }),
         Some(ses) => {
-            let mut ses = ses.write().await;
-            match &mut ses.inner {
-                SessionInner::Standard(ses) => standard::submit(ses, db, data).await,
+            let (resp, term) = {
+                let mut ses = ses.write().await;
+                match &mut ses.inner {
+                    SessionInner::Standard(ses) => 
+                        standard::submit(ses, db, data).await,
+                }
+            };
+            if term {
+                Session::terminate(sid).await;
             }
+            resp
         }
     }
 }

@@ -49,7 +49,7 @@ fn main_migrate() {
     info!("Serializing into MessagePack format.");
     let rmp = rmp_serde::to_vec(&words).unwrap();
     info!("Compressing RMP binary.");
-    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 19).unwrap();
+    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 11).unwrap();
     info!("Saving compressed RMP dictionary.");
     fs::write("dict.rmp.zstd", rmp_zstd).unwrap()
 }
@@ -76,7 +76,7 @@ fn main_zero_freq() {
     info!("Remaining {} unique words with frequency 0.", zero_freq.len());
     let rmp = rmp_serde::to_vec(&words).unwrap();
     info!("Compressing RMP binary.");
-    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 19).unwrap();
+    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 11).unwrap();
     info!("Saving compressed RMP dictionary.");
     fs::write("dict.rmp.zstd", rmp_zstd).unwrap()
 }
@@ -115,7 +115,7 @@ fn main_entry_gen() {
         .collect::<Vec<_>>();
     let rmp = rmp_serde::to_vec(&entries).unwrap();
     info!("Compressing RMP binary.");
-    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 19).unwrap();
+    let rmp_zstd = zstd::encode_all(Cursor::new(rmp), 11).unwrap();
     info!("Saving compressed RMP dictionary.");
     fs::write("dict_full.rmp.zstd", rmp_zstd).unwrap()
 }
@@ -310,10 +310,23 @@ fn migrate(word: OrgWord) -> Word {
         p_us: word.usPhone,
         p_uk: word.ukPhone,
         exam: word.examType,
-        desc: word.translations,
+        desc: word.translations.iter()
+            .map(|x| x as &str)
+            .flat_map(desc_migrate).collect(),
         phr: word.phrs.iter().map(|x| x.headword.clone()).collect(),
         phr_desc: word.phrs.iter().map(|x| x.translation.clone()).collect(),
         sen: word.sentences.iter().map(|x| x.sentence.clone()).collect(),
         sen_desc: word.sentences.iter().map(|x| x.translation.clone()).collect(),
     }
+}
+
+fn desc_migrate(desc: &str) -> Vec<String> {
+    if !desc.contains('.') || !desc.contains('；') {
+        if desc.is_ascii() || desc.contains('·') { return vec![] }
+        return vec![desc.to_string()];
+    }
+    let (kind, desc) = desc.split_once('.').unwrap();
+    desc.split('；')
+        .map(|x| format!("{}. {}", kind, x.trim()))
+        .collect()
 }
