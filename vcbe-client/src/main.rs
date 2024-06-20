@@ -46,14 +46,11 @@ fn cli() {
         if choice == usize::MAX {
             let result = std_submit(&client, session, StdSubmit::Finish);
             match result {
-                StdSubmitResult::Choose(_) => unreachable!(),
-                StdSubmitResult::NotEnough => {
-                    println!("!\tNot enough questions answered.");
-                    continue;
-                }
-                StdSubmitResult::Result => {
+                StdSubmitResult::Result { uls, rfwls } => {
+                    println!("!\tULS: {}, RFWLS: {}", uls, rfwls);
                     break;
                 }
+                _ => unreachable!(),
             }
         }
         let correct = matches!(
@@ -110,7 +107,10 @@ enum StdSubmit {
 enum StdSubmitResult {
     Choose(bool),
     NotEnough,
-    Result,
+    Result {
+        uls: u32,
+        rfwls: u32,
+    },
 }
 
 fn std_submit(client: &Client, session: u32, action: StdSubmit) -> StdSubmitResult {
@@ -139,7 +139,10 @@ fn std_submit(client: &Client, session: u32, action: StdSubmit) -> StdSubmitResu
             if resp.details.get("error") == Some(&"not enough questions answered".to_string()) {
                 return StdSubmitResult::NotEnough;
             }
-            StdSubmitResult::Result
+            StdSubmitResult::Result {
+                uls: resp.details["uls"].parse().unwrap(),
+                rfwls: resp.details["rfwls"].parse().unwrap(),
+            }
         }
     }
 }

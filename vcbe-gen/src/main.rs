@@ -2,7 +2,7 @@ use std::collections::{HashSet};
 use std::{fs, iter};
 use std::io::{Cursor};
 use log::info;
-use vcbe_core::{Entry, Word};
+use vcbe_core::{Entry, LV_COUNTS, Word};
 use rapidfuzz::distance::levenshtein;
 use rayon::prelude::*;
 use sqlx::{Connection};
@@ -122,14 +122,13 @@ fn main_entry_gen() {
 
 #[allow(unused)]
 fn main_entry_parts() -> (Vec<Word>, Vec<u8>) {
-    const PARTS: [usize; 8] = [1023, 1902, 3595, 6562, 10251, 13612, 12300, 18933];
     let mut words: Vec<Word> = rmp_serde::from_slice(&zstd::decode_all(
         Cursor::new(fs::read("dict.rmp.zstd").unwrap())).unwrap()).unwrap();
     words.sort_unstable_by_key(|x| (x.freq as i64));
     words.reverse();
     let mut parts = Vec::with_capacity(8);
     let mut begin = 0;
-    for len in PARTS {
+    for len in LV_COUNTS {
         let end = begin + len;
         let mut part = words[begin..end].to_vec();
         parts.push(part);

@@ -4,12 +4,8 @@ use rand::prelude::*;
 use rocket::serde::json::Json;
 use rocket_db_pools::{Connection, sqlx};
 use rocket_db_pools::sqlx::Row;
-use vcbe_core::Message;
+use vcbe_core::{Evidence, LV_RANGES, Message};
 use crate::{Base, BaseConn, WithConn};
-const LEVELS: [Range<u32>; 8] = [
-    0..1023, 1023..2925, 2925..6520, 6520..13082,
-    13082..23333, 23333..36945, 36945..49245, 49245..68178
-];
 
 pub struct Session {
     pub history: Vec<(u32, bool)>,
@@ -52,7 +48,7 @@ async fn related(word: u32, mut db: BaseConn) -> WithConn<Vec<u32>> {
     if related.len() < 5 {
         let lv: u32 = row.get(3);
         while related.len() < 5 {
-            let new_word = thread_rng().gen_range(LEVELS[lv as usize].clone());
+            let new_word = thread_rng().gen_range(LV_RANGES[lv as usize].clone());
             if !related.contains(&new_word) && new_word != word {
                 related.push(new_word);
             }
@@ -200,9 +196,9 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     } else {
         (((ordinal - 24) / 2) % 8, ordinal % 2 == 1)
     };
-    let mut current_word = thread_rng().gen_range(LEVELS[lv].clone());
+    let mut current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
     while session.history.iter().any(|(x, _)| *x == current_word) {
-        current_word = thread_rng().gen_range(LEVELS[lv].clone());
+        current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
     }
     let (related, mut db) = related(current_word, db).await;
     let (question, candidates, answer, db) = if is_cn2en {
@@ -225,7 +221,24 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     db
 }
 
-async fn result(session: &Session, db: BaseConn) -> WithConn<HashMap<String, String>> {
+async fn result(session: &Session, mut db: BaseConn) -> WithConn<HashMap<String, String>> {
     let mut result = HashMap::new();
+    let mut evidences = Vec::with_capacity(session.history.len());
+    for (i, correct) in &session.history {
+        let row = sqlx::query("SELECT freq, lv FROM words WHERE id = ?")
+            .bind(i).fetch_one(&mut **db).await.unwrap();
+        let freq: u32 = row.get(0);
+        let lv: u8 = row.get(1);
+        evidences.push(Evidence {
+            id: *i as usize,
+            freq,
+            lv,
+            correct: *correct,
+        });
+    }
+    let est_uls = vcbe_core::estimate_uls(evidences.clone());
+    result.insert("uls".to_string(), est_uls.to_string());
+    let est_rfwls = vcbe_core::estimate_rfwls(evidences);
+    result.insert("rfwls".to_string(), est_rfwls.to_string());
     (result, db)
 }
