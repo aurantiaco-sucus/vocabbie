@@ -6,13 +6,13 @@ use std::sync::Arc;
 use rocket::tokio::sync::{RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use log::info;
+use log::{info, warn};
 use once_cell::sync::Lazy;
-use rocket::{get, launch, post, routes};
-use rocket::http::ContentType;
-use rocket::response::content;
-use rocket::serde::json::{Json, json, Value};
+use rocket::{get, launch, options, post, Request, Response, routes};
+use rocket::http::{ContentType, Header};
+use rocket::serde::json::{Json};
 use rand::random;
+use rocket::fairing::{Fairing, Info, Kind};
 use rocket_db_pools::{Connection, Database, sqlx};
 use vcbe_core::{Message};
 
@@ -21,6 +21,9 @@ async fn rocket() -> _ {
     rocket::tokio::spawn(async {
         rocket::tokio::time::sleep(Duration::from_secs(2)).await;
         info!("Session watcher thread started.");
+        #[cfg(feature = "permissive")] {
+            warn!("Permissive feature is enabled.");
+        }
         loop {
             rocket::tokio::time::sleep(Duration::from_secs(60)).await;
             info!("Checking for expired sessions.");
@@ -45,7 +48,31 @@ async fn rocket() -> _ {
     });
     rocket::build()
         .attach(Base::init())
-        .mount("/", routes![index, start, state, submit])
+        .attach(CORS)
+        .mount("/", routes![
+            index, start, start_options, state, state_options, state_post, submit, submit_options
+        ])
+}
+
+pub struct CORS;
+
+#[rocket::async_trait]
+impl Fairing for CORS {
+    fn info(&self) -> Info {
+        Info {
+            name: "Permissive CORS handling",
+            kind: Kind::Response
+        }
+    }
+
+    async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
+        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Methods", 
+                                        "POST, GET, PATCH, OPTIONS"));
+        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Credentials", 
+                                        "true"));
+    }
 }
 
 #[get("/")]
@@ -55,8 +82,6 @@ fn index() -> (ContentType, &'static str) {
 
 static SESSIONS: Lazy<RwLock<BTreeMap<u32, Arc<RwLock<Session>>>>> = 
     Lazy::new(|| RwLock::new(BTreeMap::new()));
-
-
 
 pub struct Session {
     id: u32,
@@ -142,6 +167,9 @@ pub async fn start(data: Json<Message>, db: BaseConn) -> Json<Message> {
     }
 }
 
+#[options("/start")]
+pub async fn start_options() { }
+
 #[get("/state", format = "json", data = "<data>")]
 pub async fn state(data: Json<Message>, db: BaseConn) -> Json<Message> {
     match Session::access(data.session).await {
@@ -157,6 +185,14 @@ pub async fn state(data: Json<Message>, db: BaseConn) -> Json<Message> {
         }
     }
 }
+
+#[post("/state", format = "json", data = "<data>")]
+pub async fn state_post(data: Json<Message>, db: BaseConn) -> Json<Message> {
+    state(data, db).await
+}
+
+#[options("/state")]
+pub async fn state_options() { }
 
 #[post("/submit", format = "json", data = "<data>")]
 pub async fn submit(data: Json<Message>, db: BaseConn) -> Json<Message> {
@@ -181,3 +217,6 @@ pub async fn submit(data: Json<Message>, db: BaseConn) -> Json<Message> {
         }
     }
 }
+
+#[options("/submit")]
+pub async fn submit_options() { }

@@ -3,6 +3,9 @@ name = "vcbe-server"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+permissive = []
+
 [dependencies]
 log = "0.4.21"
 rocket = { version = "0.5.1", features = ["json"] }

@@ -46,7 +46,7 @@ async fn related(word: u32, mut db: BaseConn) -> WithConn<Vec<u32>> {
     };
     let mut related: Vec<u32> = sim.into_iter().chain(incl).chain(incl_rev).collect();
     if related.len() < 5 {
-        let lv: u32 = row.get(3);
+        let lv: u32 = row.get::<i32, _>(3) as u32;
         while related.len() < 5 {
             let new_word = thread_rng().gen_range(LV_RANGES[lv as usize].clone());
             if !related.contains(&new_word) && new_word != word {
@@ -122,13 +122,17 @@ pub async fn state(session: &Session, mut db: Connection<Base>) -> Json<Message>
     let result_available = session.history.len() >= 24;
     let question = session.question.clone();
     let candidates = session.candidates.clone();
+    let mut details = HashMap::from([
+        ("result_available".to_string(), result_available.to_string()),
+        ("question".to_string(), question),
+        ("candidates".to_string(), candidates.join(";;;")),
+    ]);
+    #[cfg(feature = "permissive")] {
+        details.insert("answer".to_string(), session.answer.to_string());
+    }
     Json(Message {
         session: 0,
-        details: HashMap::from([
-            ("result_available".to_string(), result_available.to_string()),
-            ("question".to_string(), question),
-            ("candidates".to_string(), candidates.join(";;;")),
-        ]),
+        details,
     })
 }
 
@@ -227,8 +231,8 @@ async fn result(session: &Session, mut db: BaseConn) -> WithConn<HashMap<String,
     for (i, correct) in &session.history {
         let row = sqlx::query("SELECT freq, lv FROM words WHERE id = ?")
             .bind(i).fetch_one(&mut **db).await.unwrap();
-        let freq: u32 = row.get(0);
-        let lv: u8 = row.get(1);
+        let freq: u32 = row.get::<i32, _>(0) as u32;
+        let lv: u8 = row.get::<i32, _>(1) as u8;
         evidences.push(Evidence {
             id: *i as usize,
             freq,
