@@ -38,15 +38,15 @@ async fn related(word: u32, mut db: BaseConn) -> WithConn<Vec<u32>> {
         .fetch_one(&mut **db).await.unwrap();
     let sim: Vec<u32> = {
         let sim: String = row.get(0);
-        sim.split(',').map(|x| x.parse().unwrap()).collect()
+        sim.split(',').filter_map(|x| x.parse().ok()).collect()
     };
     let incl: Vec<u32> = {
         let incl: String = row.get(1);
-        incl.split(',').map(|x| x.parse().unwrap()).collect()
+        incl.split(',').filter_map(|x| x.parse().ok()).collect()
     };
     let incl_rev: Vec<u32> = {
         let incl_rev: String = row.get(2);
-        incl_rev.split(',').map(|x| x.parse().unwrap()).collect()
+        incl_rev.split(',').filter_map(|x| x.parse().ok()).collect()
     };
     let mut related: Vec<u32> = sim.into_iter().chain(incl).chain(incl_rev).collect();
     if related.len() < 5 {
@@ -147,7 +147,7 @@ pub async fn submit(
             ]),
         }), false),
         Some(action) => match action as &str {
-            "submit" => match data.details.get("choice") {
+            "choose" => match data.details.get("choice") {
                 None => (Json(Message {
                     session: 0,
                     details: HashMap::from([
