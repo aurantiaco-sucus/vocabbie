@@ -289,13 +289,17 @@ fn main() {
     env_logger::init();
     info!("Vocabble Database Generation Utility");
     // migrate from BNC_COCA_EN2CN to internal format
-    main_migrate();
+    // main_migrate();
+
     // filter out zero frequency words
-    main_zero_freq();
+    // main_zero_freq();
+
     // collect characteristics & generate entries
-    main_entry_gen();
+    // main_entry_gen();
+
     // generate rows
-    main_row_gen();
+    // main_row_gen();
+
     // populate database
     async_std::task::block_on(main_database_gen());
 }
