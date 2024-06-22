@@ -209,6 +209,7 @@ enum StdSubmitResult {
     Result {
         uls: u32,
         rfwls: u32,
+        heu: u32,
     },
 }
 
@@ -241,6 +242,7 @@ fn std_submit(client: &Client, session: u32, action: StdSubmit) -> StdSubmitResu
             StdSubmitResult::Result {
                 uls: resp.details["uls"].parse().unwrap(),
                 rfwls: resp.details["rfwls"].parse().unwrap(),
+                heu: resp.details["heu"].parse().unwrap(),
             }
         }
     }
@@ -289,6 +291,7 @@ enum RclSubmitResult {
     Result {
         uls: u32,
         rfwls: u32,
+        heu: u32,
     },
 }
 
@@ -319,6 +322,7 @@ fn rcl_submit(client: &Client, session: u32, action: RclSubmit) -> RclSubmitResu
             RclSubmitResult::Result {
                 uls: resp.details["uls"].parse().unwrap(),
                 rfwls: resp.details["rfwls"].parse().unwrap(),
+                heu: resp.details["heu"].parse().unwrap(),
             }
         }
     }

@@ -109,39 +109,66 @@ pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
 }
 
 /// Maximum likelihood estimation
-pub fn estimate_mle(evidence: Vec<Evidence>, freq: Vec<u32>) -> usize {
-    let freq_total = freq.iter().sum::<u32>() as f64;
+// pub fn estimate_mle(evidence: Vec<Evidence>, freq: Vec<u32>) -> usize {
+//     let freq_total = *freq.iter().max().unwrap() as f64 / 1000.0;
+//
+//     let likelihood = |est: f64, freq_known: &[f64], freq_unknown: &[f64]| -> f64 {
+//         let prod_known = freq_known.iter()
+//             .map(|x| x / freq_total)
+//             .map(|x| 1.0 - (1.0 - x).powf(est))
+//             .fold(1.0, |acc, x| acc * x);
+//         let prod_unknown = freq_unknown.iter()
+//             .map(|x| x / freq_total)
+//             .map(|x| 1.0 - x.powf(est))
+//             .fold(1.0, |acc, x| acc * x);
+//         prod_known * prod_unknown
+//     };
+//
+//     let freq_known: Vec<f64> = evidence.iter()
+//         .filter(|x| x.correct)
+//         .map(|x| x.freq as f64)
+//         .collect();
+//     let freq_unknown: Vec<f64> = evidence.iter()
+//         .filter(|x| !x.correct)
+//         .map(|x| x.freq as f64)
+//         .collect();
+//
+//     let word_seen = (0..60_0000).step_by(1000)
+//         .map(|x| likelihood(x as f64 / 1000.0, &freq_known, &freq_unknown))
+//         .max_by(|x, y| x.partial_cmp(y).unwrap()).unwrap();
+//
+//     let est = freq.iter()
+//         .map(|x| *x as f64 / freq_total)
+//         .map(|x| (x - 1.0) * ((1.0 - x).powf(word_seen) - 1.0))
+//         .sum::<f64>();
+//     est as usize
+// }
 
-    let likelihood = |est: f64, freq_known: &[f64], freq_unknown: &[f64]| -> f64 {
-        let prod_known = freq_known.iter()
-            .map(|x| x / freq_total)
-            .map(|x| 1.0 - (1.0 - x).powf(est))
-            .fold(1.0, |acc, x| acc * x);
-        let prod_unknown = freq_unknown.iter()
-            .map(|x| x / freq_total)
-            .map(|x| 1.0 - x.powf(est))
-            .fold(1.0, |acc, x| acc * x);
-        prod_known * prod_unknown
-    };
-
-    let freq_known: Vec<f64> = evidence.iter()
-        .filter(|x| x.correct)
-        .map(|x| x.freq as f64)
-        .collect();
-    let freq_unknown: Vec<f64> = evidence.iter()
-        .filter(|x| !x.correct)
-        .map(|x| x.freq as f64)
-        .collect();
-
-    let word_seen = (0..60_0000)
-        .map(|x| likelihood(x as f64 / 1000.0, &freq_known, &freq_unknown))
-        .max_by(|x, y| x.partial_cmp(y).unwrap()).unwrap();
-
-    let est = freq.iter()
-        .map(|x| *x as f64 / freq_total)
-        .map(|x| (x - 1.0) * ((1.0 - x).powf(word_seen) - 1.0))
-        .sum::<f64>();
-    est as usize
+/// Heuristic estimation
+pub fn estimate_heu(evidences: Vec<Evidence>) -> usize {
+    let one = u128::MAX / 1000_0000;
+    let ws = evidences.iter().fold([0; 8], |mut acc, x| {
+        let weight = one / x.freq as u128;
+        acc[x.lv as usize] += weight * x.correct as u128;
+        acc
+    });
+    let level = ws.iter().enumerate()
+        .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
+        .map(|(i, _)| i).unwrap();
+    let mut pos = LV_RANGES[level].start + LV_COUNTS[level] as u32 / 2;
+    for ev in evidences.iter().filter(|x| x.lv != level as u8) {
+        let weight = if ev.freq > pos {
+            (ev.freq - pos) as f64 * (LV_RANGES[7].end - ev.freq) as f64 / (LV_RANGES[7].end - pos) as f64
+        } else {
+            (pos - ev.freq) as f64 * (ev.freq / pos) as f64
+        };
+        if ev.correct {
+            pos += weight as u32;
+        } else {
+            pos -= weight as u32;
+        }
+    }
+    pos as usize
 }
 
 /// Machine learning based mimicry of Test-Your-Vocab scoring

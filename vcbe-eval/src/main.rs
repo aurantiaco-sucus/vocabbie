@@ -59,6 +59,7 @@ fn process(
     }
     let uls = vcbe_core::estimate_uls(evidences.clone());
     let rfwls = vcbe_core::estimate_rfwls(evidences.clone());
-    let mle = vcbe_core::estimate_mle(evidences.clone(), freq);
-    (uls, rfwls, mle)
+    //let mle = vcbe_core::estimate_mle(evidences.clone(), freq);
+    let heu = vcbe_core::estimate_heu(evidences.clone());
+    (uls, rfwls, heu)
 }
