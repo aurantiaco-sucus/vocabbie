@@ -249,7 +249,16 @@ pub async fn result_common(
     }
     let est_uls = vcbe_core::estimate_uls(evidences.clone());
     result.insert("uls".to_string(), est_uls.to_string());
-    let est_rfwls = vcbe_core::estimate_rfwls(evidences);
+    let est_rfwls = vcbe_core::estimate_rfwls(evidences.clone());
     result.insert("rfwls".to_string(), est_rfwls.to_string());
+    let freq = {
+        let rows = sqlx::query("SELECT freq FROM words")
+            .fetch_all(&mut **db).await.unwrap();
+        rows.iter()
+            .map(|row| row.get::<i32, _>(0) as u32)
+            .collect::<Vec<u32>>()
+    };
+    let est_mle = vcbe_core::estimate_mle(evidences, freq);
+    result.insert("mle".to_string(), est_mle.to_string());
     (result, db)
 }

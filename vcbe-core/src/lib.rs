@@ -105,6 +105,37 @@ pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
 }
 
 /// Maximum likelihood estimation
-pub fn estimate_mle(evidence: Vec<Evidence>) -> usize {
+pub fn estimate_mle(evidence: Vec<Evidence>, freq: Vec<u32>) -> usize {
+    let freq_total = freq.iter().sum::<u32>() as f64;
 
+    let likelihood = |est: f64, freq_known: &[f64], freq_unknown: &[f64]| -> f64 {
+        let prod_known = freq_known.iter()
+            .map(|x| x / freq_total)
+            .map(|x| 1.0 - (1.0 - x).powf(est))
+            .fold(1.0, |acc, x| acc * x);
+        let prod_unknown = freq_unknown.iter()
+            .map(|x| x / freq_total)
+            .map(|x| 1.0 - x.powf(est))
+            .fold(1.0, |acc, x| acc * x);
+        prod_known * prod_unknown
+    };
+
+    let freq_known: Vec<f64> = evidence.iter()
+        .filter(|x| x.correct)
+        .map(|x| x.freq as f64)
+        .collect();
+    let freq_unknown: Vec<f64> = evidence.iter()
+        .filter(|x| !x.correct)
+        .map(|x| x.freq as f64)
+        .collect();
+
+    let word_seen = (0..60_0000)
+        .map(|x| likelihood(x as f64 / 1000.0, &freq_known, &freq_unknown))
+        .max_by(|x, y| x.partial_cmp(y).unwrap()).unwrap();
+
+    let est = freq.iter()
+        .map(|x| *x as f64 / freq_total)
+        .map(|x| (x - 1.0) * ((1.0 - x).powf(word_seen) - 1.0))
+        .sum::<f64>();
+    est as usize
 }

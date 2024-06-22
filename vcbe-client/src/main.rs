@@ -114,7 +114,53 @@ fn cli_rcl() {
 }
 
 fn script() {
-    todo!()
+    let file = args().nth(2).unwrap();
+    let script = std::fs::read_to_string(file).unwrap();
+    let client = Client::new();
+    let mut lines = script.lines()
+        .filter(|x| !x.is_empty());
+    let mode = lines.next().unwrap().trim();
+    match mode {
+        "std" => {
+            let session = std_start(&client);
+            let mut last = StdSubmitResult::NotEnough;
+            for line in lines {
+                let choice = line.parse().unwrap();
+                last = std_submit(&client, session, StdSubmit::Choose(choice));
+            }
+            if matches!(last, StdSubmitResult::NotEnough) {
+                eprintln!("Not enough questions answered.");
+            }
+            last = std_submit(&client, session, StdSubmit::Finish);
+            if let StdSubmitResult::Result { uls, rfwls } = last {
+                println!("ULS: {}, RFWLS: {}", uls, rfwls);
+            } else {
+                eprintln!("Unexpected result.");
+            }
+        }
+        "rcl" => {
+            let session = rcl_start(&client);
+            let mut last = RclSubmitResult::NotEnough;
+            for line in lines {
+                let choice = match line.trim() {
+                    "y" => RclSubmit::Choose(true),
+                    "n" => RclSubmit::Choose(false),
+                    _ => unreachable!(),
+                };
+                last = rcl_submit(&client, session, choice);
+            }
+            last = rcl_submit(&client, session, RclSubmit::Finish);
+            if matches!(last, RclSubmitResult::NotEnough) {
+                eprintln!("Not enough questions answered.");
+            }
+            if let RclSubmitResult::Result { uls, rfwls } = last {
+                println!("ULS: {}, RFWLS: {}", uls, rfwls);
+            } else {
+                eprintln!("Unexpected result.");
+            }
+        }
+        _ => unreachable!(),
+    };
 }
 
 fn std_start(client: &Client) -> u32 {
@@ -269,6 +315,7 @@ fn rcl_submit(client: &Client, session: u32, action: RclSubmit) -> RclSubmitResu
             if resp.details.get("error") == Some(&"not enough questions answered".to_string()) {
                 return RclSubmitResult::NotEnough;
             }
+            println!("{:?}", resp);
             RclSubmitResult::Result {
                 uls: resp.details["uls"].parse().unwrap(),
                 rfwls: resp.details["rfwls"].parse().unwrap(),
