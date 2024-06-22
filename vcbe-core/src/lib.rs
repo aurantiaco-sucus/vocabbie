@@ -146,29 +146,18 @@ pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
 
 /// Heuristic estimation
 pub fn estimate_heu(evidences: Vec<Evidence>) -> usize {
-    let one = u128::MAX / 1000_0000;
-    let ws = evidences.iter().fold([0; 8], |mut acc, x| {
-        let weight = one / x.freq as u128;
-        acc[x.lv as usize] += weight * x.correct as u128;
-        acc
-    });
-    let level = ws.iter().enumerate()
-        .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
-        .map(|(i, _)| i).unwrap();
-    let mut pos = LV_RANGES[level].start + LV_COUNTS[level] as u32 / 2;
-    for ev in evidences.iter().filter(|x| x.lv != level as u8) {
-        let weight = if ev.freq > pos {
-            (ev.freq - pos) as f64 * (LV_RANGES[7].end - ev.freq) as f64 / (LV_RANGES[7].end - pos) as f64
-        } else {
-            (pos - ev.freq) as f64 * (ev.freq / pos) as f64
-        };
-        if ev.correct {
-            pos += weight as u32;
-        } else {
-            pos -= weight as u32;
-        }
+    let max = 30.0;
+    let mut spectrum = [0f64; 68178];
+    for word in evidences {
+        let weight = max / (word.freq as f64).log2();
+        spectrum.iter_mut().enumerate()
+            .filter(|(i, _)| (*i as isize - word.id as isize).abs() < 50 * weight as isize)
+            .for_each(|(i, x)|
+            *x += weight * (1.0 - (i as isize - word.id as isize).abs() as f64 / 50.0));
     }
-    pos as usize
+    spectrum.iter().enumerate()
+        .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
+        .unwrap().0
 }
 
 /// Machine learning based mimicry of Test-Your-Vocab scoring
