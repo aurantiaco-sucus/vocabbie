@@ -1,0 +1,12 @@
+[package]
+name = "vcbe-eval"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.203"
+rmp-serde = "1.3.0"
+rayon = "1.10.0"
+indicatif = "0.17.8"
+
+vcbe-core = { path = "../vcbe-core"}

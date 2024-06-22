@@ -3,6 +3,9 @@ name = "vcbe-core"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+tyv = ["tch"]
+
 [dependencies]
 serde = { version = "1.0.203", features = ["derive"] }
-tch = { version = "0.16.0", features = ["download-libtorch"] }
+tch = { version = "0.16.0", features = ["download-libtorch"], optional = true }

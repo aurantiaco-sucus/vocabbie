@@ -6,7 +6,7 @@ use rocket::serde::json::Json;
 use rocket_db_pools::{Connection, sqlx};
 use rocket_db_pools::sqlx::Row;
 
-use vcbe_core::Message;
+use vcbe_core::{Message, TyvData};
 
 use crate::{Base, BaseConn, common};
 
@@ -28,25 +28,25 @@ pub async fn create(db: BaseConn, tyv_mode: bool) -> Session {
 
 struct TyvSet {
     ito: Vec<String>,
-    toi: BTreeMap<usize, String>,
+    toi: HashMap<String, usize>,
 }
 
-static TYV_BROAD: Lazy<TyvSet> = Lazy::new(|| {
-    const RMP: &[u8] = include_bytes!("tyv-broad.rmp");
-    let ito: Vec<String> = rmp_serde::from_slice(RMP).unwrap();
-    let toi: BTreeMap<usize, String> = ito.iter().enumerate()
-        .map(|(i, x)| (i, x.clone()))
+fn gen_tyv_set(bytes: &'static [u8]) -> TyvSet {
+    let ito: Vec<String> = rmp_serde::from_slice(bytes).unwrap();
+    let toi: HashMap<String, usize> = ito.iter().enumerate()
+        .map(|(i, x)| (x.clone(), i))
         .collect();
     TyvSet { ito, toi }
-});
+}
 
-static TYV_NARROW: Lazy<TyvSet> = Lazy::new(|| {
-    const RMP: &[u8] = include_bytes!("tyv-narrow.rmp");
-    let ito: Vec<String> = rmp_serde::from_slice(RMP).unwrap();
-    let toi: BTreeMap<usize, String> = ito.iter().enumerate()
-        .map(|(i, x)| (i, x.clone()))
-        .collect();
-    TyvSet { ito, toi }
+static TYV_BROAD: Lazy<TyvSet> = Lazy::new(|| gen_tyv_set(include_bytes!("tyv-broad.rmp")));
+static TYV_NARROW: Lazy<TyvSet> = Lazy::new(|| gen_tyv_set(include_bytes!("tyv-narrow.rmp")));
+
+static TYV_DATA: Lazy<TyvData> = Lazy::new(|| {
+    let broad_toi = TYV_BROAD.toi.clone();
+    let narrow_toi = TYV_NARROW.toi.clone();
+    let model = tch::jit::CModule::load("model1_script.pt").unwrap();
+    TyvData { broad_toi, narrow_toi, model }
 });
 
 async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
@@ -57,11 +57,11 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
         } else {
             TYV_BROAD.ito.len()..TYV_BROAD.ito.len() + TYV_NARROW.ito.len()
         };
-        let mut word = thread_rng().gen_range(&range);
-        while session.history.iter().any(|(x, _)| *x == word) {
-            word = thread_rng().gen_range(&range);
+        let mut word = thread_rng().gen_range(range.clone());
+        while session.history.iter().any(|(x, _)| *x == word as u32) {
+            word = thread_rng().gen_range(range.clone());
         }
-        session.current_word = word;
+        session.current_word = word as u32;
         return db;
     }
     let lv = if ordinal < 24 {
@@ -76,11 +76,19 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
 pub async fn state(session: &Session, mut db: Connection<Base>) -> Json<Message> {
     if session.tyv_mode {
         let result_available = session.history.len() >= 60;
-        let question = if session.current_word as usize < TYV_BROAD.ito.len() {
-            &TYV_BROAD.ito[session.current_word]
+        let broad_ito_len = TYV_BROAD.ito.len();
+        let question = if (session.current_word as usize) < broad_ito_len {
+            &TYV_BROAD.ito[session.current_word as usize]
         } else {
-            &TYV_NARROW.ito[session.current_word - TYV_BROAD.ito.len()]
+            &TYV_NARROW.ito[session.current_word as usize - broad_ito_len]
         };
+        return Json(Message {
+            session: 0,
+            details: HashMap::from([
+                ("result_available".to_string(), result_available.to_string()),
+                ("question".to_string(), question.clone()),
+            ])
+        });
     }
     let result_available = session.history.len() >= 24;
     let row = sqlx::query("SELECT word FROM words WHERE id = ?")
@@ -109,7 +117,7 @@ pub async fn submit(
             }), false)
         }
         "finish" => {
-            if session.history.len() < 24 {
+            if session.history.len() < 24 || (session.tyv_mode && session.history.len() < 60) {
                 (Json(Message {
                     session: 0,
                     details: HashMap::from([
@@ -117,8 +125,11 @@ pub async fn submit(
                     ])
                 }), false)
             } else {
-                let (details, db) = common::result_common(
-                    &session.history, db).await;
+                let (details, db) = if session.tyv_mode {
+                    (tyv_result(&session.history), db)
+                } else {
+                    common::result_common(&session.history, db).await
+                };
                 (Json(Message {
                     session: 0,
                     details,
@@ -127,4 +138,22 @@ pub async fn submit(
         }
         _ => panic!("Invalid action"),
     }
+}
+
+fn tyv_result(history: &[(u32, bool)]) -> HashMap<String, String> {
+    let broad_len = TYV_BROAD.ito.len() as u32;
+    let result = history.iter()
+        .map(|(i, r)| {
+            let word = if *i < broad_len {
+                &TYV_BROAD.ito[*i as usize]
+            } else {
+                &TYV_NARROW.ito[*i as usize - broad_len as usize]
+            };
+            (&word as &str, *r)
+        })
+        .collect::<Vec<_>>();
+    let est_tyv = vcbe_core::estimate_tyv(&result, &TYV_DATA);
+    HashMap::from([
+        ("tyv".to_string(), est_tyv.to_string())
+    ])
 }

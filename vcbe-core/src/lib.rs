@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Range;
+#[cfg(feature = "tyv")]
 use tch::{CModule, Tensor};
 
 pub const LV_RANGES: [Range<u32>; 8] = [
@@ -84,6 +85,7 @@ pub fn estimate_uls(evidences: Vec<Evidence>) -> usize {
     });
     let mut estimate = 0u32;
     for (i, (total, correct)) in ratios.iter().enumerate() {
+        if *total == 0 { continue; }
         estimate += (LV_COUNTS[i] * *correct / *total as usize) as u32;
     }
     estimate as usize
@@ -100,6 +102,7 @@ pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
     });
     let mut estimate = 0u32;
     for (i, (total, correct)) in ratios.iter().enumerate() {
+        if *total == 0 { continue; }
         estimate += (LV_COUNTS[i] as u128 * *correct / *total) as u32;
     }
     estimate as usize
@@ -142,27 +145,29 @@ pub fn estimate_mle(evidence: Vec<Evidence>, freq: Vec<u32>) -> usize {
 }
 
 /// Machine learning based mimicry of Test-Your-Vocab scoring
+#[cfg(feature = "tyv")]
 pub fn estimate_tyv(result: &[(&str, bool)], data: &TyvData) -> usize {
     let mut broad = [0.0; 127];
     let mut narrow = [0.0; 608];
     for (word, recall) in result {
-        if let Some(i) = data.broad_toi.get(word) {
-            broad[i] = if recall { 1 } else { -1 }
+        if let Some(i) = data.broad_toi.get(&word.to_string()) {
+            broad[*i] = if *recall { 1.0 } else { -1.0 }
         }
-        if let Some(i) = data.narrow_toi.get(word) {
-            narrow[i] = if recall { 1 } else { -1 }
+        if let Some(i) = data.narrow_toi.get(&word.to_string()) {
+            narrow[*i] = if *recall { 1.0 } else { -1.0 }
         }
     }
     tyv_inference(&data.model, &broad, &narrow) as usize
 }
 
+#[cfg(feature = "tyv")]
 pub struct TyvData {
-    pub words: Vec<String>,
     pub broad_toi: HashMap<String, usize>,
     pub narrow_toi: HashMap<String, usize>,
     pub model: CModule,
 }
 
+#[cfg(feature = "tyv")]
 fn tyv_inference(model: &CModule, broad: &[f32], narrow: &[f32]) -> f32 {
     let broad = Tensor::from_slice2(&[broad]);
     let narrow = Tensor::from_slice2(&[narrow]);
