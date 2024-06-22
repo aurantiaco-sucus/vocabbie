@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1.0.203", features = ["derive"] }
+egobox-ego = "0.19.0"
+ndarray = "0.15.6"

@@ -103,3 +103,8 @@ pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
     }
     estimate as usize
 }
+
+/// Maximum likelihood estimation
+pub fn estimate_mle(evidence: Vec<Evidence>) -> usize {
+
+}
