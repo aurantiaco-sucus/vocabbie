@@ -139,3 +139,13 @@ pub fn estimate_mle(evidence: Vec<Evidence>, freq: Vec<u32>) -> usize {
         .sum::<f64>();
     est as usize
 }
+
+/// Machine learning based mimicry of Test-Your-Vocab scoring
+pub fn estimate_tyv(evidence: Vec<Evidence>) -> usize {
+}
+
+pub struct TyvData {
+    pub words: Vec<String>,
+    pub toi: HashMap<String, usize>,
+    pub
+}
