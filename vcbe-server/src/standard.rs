@@ -3,8 +3,8 @@ use rand::prelude::*;
 use rocket::serde::json::Json;
 use rocket_db_pools::{Connection, sqlx};
 use rocket_db_pools::sqlx::Row;
-use vcbe_core::{Evidence, LV_RANGES, Message};
-use crate::{Base, BaseConn, WithConn};
+use vcbe_core::{LV_RANGES, Message};
+use crate::{Base, BaseConn, common, WithConn};
 
 pub struct Session {
     pub history: Vec<(u32, bool)>,
@@ -175,7 +175,7 @@ pub async fn submit(
                         ]),
                     }), false)
                 } else {
-                    let (result, db) = result_common(
+                    let (result, db) = common::result_common(
                         &session.history, db).await;
                     (Json(Message {
                         session: 0,
@@ -200,7 +200,7 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     } else {
         (((ordinal - 24) / 2) % 8, ordinal % 2 == 1)
     };
-    let current_word = choose_word_common(&session.history, lv);
+    let current_word = common::choose_word_common(&session.history, lv);
     let (related, mut db) = related(current_word, db).await;
     let (question, candidates, answer, db) = if is_cn2en {
         let ((candidates, answer, question), db) = 
@@ -220,45 +220,4 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     session.candidates = candidates;
     session.answer = answer;
     db
-}
-
-pub fn choose_word_common(history: &[(u32, bool)], lv: usize) -> u32 {
-    let mut current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
-    while history.iter().any(|(x, _)| *x == current_word) {
-        current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
-    }
-    current_word
-}
-
-pub async fn result_common(
-    history: &[(u32, bool)], mut db: Connection<Base>
-) -> WithConn<HashMap<String, String>> {
-    let mut result = HashMap::new();
-    let mut evidences = Vec::with_capacity(history.len());
-    for (i, correct) in history {
-        let row = sqlx::query("SELECT freq, lv FROM words WHERE id = ?")
-            .bind(i).fetch_one(&mut **db).await.unwrap();
-        let freq: u32 = row.get::<i32, _>(0) as u32;
-        let lv: u8 = row.get::<i32, _>(1) as u8;
-        evidences.push(Evidence {
-            id: *i as usize,
-            freq,
-            lv,
-            correct: *correct,
-        });
-    }
-    let est_uls = vcbe_core::estimate_uls(evidences.clone());
-    result.insert("uls".to_string(), est_uls.to_string());
-    let est_rfwls = vcbe_core::estimate_rfwls(evidences.clone());
-    result.insert("rfwls".to_string(), est_rfwls.to_string());
-    let freq = {
-        let rows = sqlx::query("SELECT freq FROM words")
-            .fetch_all(&mut **db).await.unwrap();
-        rows.iter()
-            .map(|row| row.get::<i32, _>(0) as u32)
-            .collect::<Vec<u32>>()
-    };
-    let est_mle = vcbe_core::estimate_mle(evidences, freq);
-    result.insert("mle".to_string(), est_mle.to_string());
-    (result, db)
 }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Range;
+use tch::{CModule, Tensor};
 
 pub const LV_RANGES: [Range<u32>; 8] = [
     0..1023, 1023..2925, 2925..6520, 6520..13082,
@@ -141,11 +142,30 @@ pub fn estimate_mle(evidence: Vec<Evidence>, freq: Vec<u32>) -> usize {
 }
 
 /// Machine learning based mimicry of Test-Your-Vocab scoring
-pub fn estimate_tyv(evidence: Vec<Evidence>) -> usize {
+pub fn estimate_tyv(result: &[(&str, bool)], data: &TyvData) -> usize {
+    let mut broad = [0.0; 127];
+    let mut narrow = [0.0; 608];
+    for (word, recall) in result {
+        if let Some(i) = data.broad_toi.get(word) {
+            broad[i] = if recall { 1 } else { -1 }
+        }
+        if let Some(i) = data.narrow_toi.get(word) {
+            narrow[i] = if recall { 1 } else { -1 }
+        }
+    }
+    tyv_inference(&data.model, &broad, &narrow) as usize
 }
 
 pub struct TyvData {
     pub words: Vec<String>,
-    pub toi: HashMap<String, usize>,
-    pub
+    pub broad_toi: HashMap<String, usize>,
+    pub narrow_toi: HashMap<String, usize>,
+    pub model: CModule,
+}
+
+fn tyv_inference(model: &CModule, broad: &[f32], narrow: &[f32]) -> f32 {
+    let broad = Tensor::from_slice2(&[broad]);
+    let narrow = Tensor::from_slice2(&[narrow]);
+    let output = model.forward_ts(&[broad, narrow]).unwrap();
+    (output.double_value(&[0, 0]) * 45000.0) as f32
 }

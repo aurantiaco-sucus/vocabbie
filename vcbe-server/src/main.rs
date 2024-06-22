@@ -1,5 +1,6 @@
 mod standard;
 mod recall;
+mod common;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
@@ -153,7 +154,8 @@ pub async fn start(data: Json<Message>, db: BaseConn) -> Json<Message> {
         Some(kind) => {
             let session = Session::create_with(match kind {
                 "standard" => SessionInner::Standard(standard::create(db).await),
-                "recall" => SessionInner::Recall(recall::create(db).await),
+                "recall" => SessionInner::Recall(recall::create(db, false).await),
+                "recall-tyv" => SessionInner::Recall(recall::create(db, true).await),
                 _ => return Json(Message {
                     session: 0,
                     details: HashMap::from([
