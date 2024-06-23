@@ -146,18 +146,21 @@ pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
 
 /// Heuristic estimation
 pub fn estimate_heu(evidences: Vec<Evidence>) -> usize {
-    let max = 30.0;
-    let mut spectrum = [0f64; 68178];
-    for word in evidences {
-        let weight = max / (word.freq as f64).log2();
-        spectrum.iter_mut().enumerate()
-            .filter(|(i, _)| (*i as isize - word.id as isize).abs() < 50 * weight as isize)
-            .for_each(|(i, x)|
-            *x += weight * (1.0 - (i as isize - word.id as isize).abs() as f64 / 50.0));
-    }
-    spectrum.iter().enumerate()
-        .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
-        .unwrap().0
+    // let max = 30.0;
+    // let mut spectrum = [0f64; 68178];
+    // for word in evidences {
+    //     let weight = max / (word.freq as f64).log2();
+    //     spectrum.iter_mut().enumerate()
+    //         .filter(|(i, _)| (*i as isize - word.id as isize).abs() < 50 * weight as isize)
+    //         .for_each(|(i, x)|
+    //         *x += weight * (1.0 - (i as isize - word.id as isize).abs() as f64 / 50.0));
+    // }
+    // spectrum.iter().enumerate()
+    //     .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
+    //     .unwrap().0
+    let total = 9056.0;
+    let weights: f64 = evidences.iter().map(|x| 1.0 / x.freq as f64).sum();
+    return (weights * 68178.0 * 500.0 / total) as usize;
 }
 
 /// Machine learning based mimicry of Test-Your-Vocab scoring

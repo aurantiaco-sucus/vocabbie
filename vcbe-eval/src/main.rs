@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::env::args;
 use std::fs;
+use std::process::exit;
 use rayon::prelude::*;
 use vcbe_core::{Evidence, Row};
 
 fn main() {
     let data: Vec<Row> = rmp_serde::from_slice(&fs::read("rows.rmp").unwrap()).unwrap();
+    // main_weight_density(&data);
     let dict = data.iter()
         .map(|r| (r.word.clone(), r.clone()))
         .collect::<HashMap<_, _>>();
@@ -22,7 +24,7 @@ fn main() {
     let pb = indicatif::ProgressBar::new(cases.len() as u64);
     let results = cases.par_iter()
         .map(|(k, u)| { 
-            let res = process(&dict, freq.clone(), k, u);
+            let res = process(&dict, k, u);
             pb.inc(1);
             res
         })
@@ -33,7 +35,7 @@ fn main() {
 }
 
 fn process(
-    dict: &HashMap<String, Row>, freq: Vec<u32>, known: &[&str], unknown: &[&str]
+    dict: &HashMap<String, Row>, known: &[&str], unknown: &[&str]
 ) -> (usize, usize, usize) {
     let evidences: Vec<Evidence> = {
         known.iter().filter_map(|k| {
@@ -63,3 +65,11 @@ fn process(
     let heu = vcbe_core::estimate_heu(evidences.clone());
     (uls, rfwls, heu)
 }
+
+// fn main_weight_density(data: &[Row]) {
+//     let one = u128::MAX / 1000_0000;
+//     let den: u128 = data.iter().map(|r| one / ((r.freq as u128).ilog2() as u128 + 1)).sum();
+//     let den = den / one;
+//     println!("{}", den);
+//     exit(0);
+// }
