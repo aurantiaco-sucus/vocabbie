@@ -158,9 +158,14 @@ pub fn estimate_heu(evidences: Vec<Evidence>) -> usize {
     // spectrum.iter().enumerate()
     //     .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
     //     .unwrap().0
-    let total = 9056.0;
-    let weights: f64 = evidences.iter().map(|x| 1.0 / x.freq as f64).sum();
-    return (weights * 68178.0 * 500.0 / total) as usize;
+    // let total = 9056.0;
+    let one = u128::MAX / 1000_0000;
+    let total: u128 = evidences.iter()
+        .map(|x| one / x.freq as u128).sum();
+    let correct: u128 = evidences.iter()
+        .filter(|x| x.correct)
+        .map(|x| one / x.freq as u128).sum();
+    (correct * 68178 / total) as usize
 }
 
 /// Machine learning based mimicry of Test-Your-Vocab scoring

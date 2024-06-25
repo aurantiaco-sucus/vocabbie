@@ -1,6 +1,7 @@
 mod standard;
 mod recall;
 mod common;
+mod mass_recall;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
