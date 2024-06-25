@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::env::args;
 use std::fs;
-use std::process::exit;
 use rayon::prelude::*;
 use vcbe_core::{Evidence, Row};
 
@@ -11,7 +10,6 @@ fn main() {
     let dict = data.iter()
         .map(|r| (r.word.clone(), r.clone()))
         .collect::<HashMap<_, _>>();
-    let freq = data.iter().map(|r| r.freq).collect::<Vec<_>>();
     let cases = args().nth(1).unwrap();
     let cases = fs::read_to_string(cases).unwrap();
     let cases = cases.lines()

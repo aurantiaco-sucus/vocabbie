@@ -54,8 +54,8 @@ fn cli_std() {
         if choice == usize::MAX {
             let result = std_submit(&client, session, StdSubmit::Finish);
             match result {
-                StdSubmitResult::Result { uls, rfwls } => {
-                    println!("!\tULS: {}, RFWLS: {}", uls, rfwls);
+                StdSubmitResult::Result { uls, rfwls, heu } => {
+                    println!("!\tULS: {}, RFWLS: {}, HEU: {}", uls, rfwls, heu);
                     break;
                 }
                 _ => unreachable!(),
@@ -101,8 +101,8 @@ fn cli_rcl() {
             2 => {
                 let result = rcl_submit(&client, session, RclSubmit::Finish);
                 match result {
-                    RclSubmitResult::Result { uls, rfwls } => {
-                        println!("!\tULS: {}, RFWLS: {}", uls, rfwls);
+                    RclSubmitResult::Result { uls, rfwls, heu } => {
+                        println!("!\tULS: {}, RFWLS: {}, HEU: {}", uls, rfwls, heu);
                         break;
                     }
                     _ => unreachable!(),
@@ -132,9 +132,8 @@ fn script() {
                 eprintln!("Not enough questions answered.");
             }
             last = std_submit(&client, session, StdSubmit::Finish);
-            if let StdSubmitResult::Result { uls, rfwls } = last {
-                println!("ULS: {}, RFWLS: {}", uls, rfwls);
-            } else {
+            if let StdSubmitResult::Result { uls, rfwls, heu } = last {
+                println!("ULS: {}, RFWLS: {}, HEU: {}", uls, rfwls, heu);
                 eprintln!("Unexpected result.");
             }
         }
@@ -153,8 +152,8 @@ fn script() {
             if matches!(last, RclSubmitResult::NotEnough) {
                 eprintln!("Not enough questions answered.");
             }
-            if let RclSubmitResult::Result { uls, rfwls } = last {
-                println!("ULS: {}, RFWLS: {}", uls, rfwls);
+            if let RclSubmitResult::Result { uls, rfwls, heu } = last {
+                println!("ULS: {}, RFWLS: {}, HEU: {}", uls, rfwls, heu);
             } else {
                 eprintln!("Unexpected result.");
             }
