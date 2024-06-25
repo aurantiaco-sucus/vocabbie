@@ -69,7 +69,7 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     } else {
         ((ordinal - 24) / 2) % 8
     };
-    session.current_word = common::choose_word_common(&session.history, lv);
+    session.current_word = common::choose_word(&session.history, lv);
     db
 }
 
@@ -128,7 +128,7 @@ pub async fn submit(
                 let (details, db) = if session.tyv_mode {
                     (tyv_result(&session.history), db)
                 } else {
-                    common::result_common(&session.history, db).await
+                    common::result(&session.history, db).await
                 };
                 (Json(Message {
                     session: 0,

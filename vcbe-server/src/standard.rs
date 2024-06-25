@@ -175,7 +175,7 @@ pub async fn submit(
                         ]),
                     }), false)
                 } else {
-                    let (result, db) = common::result_common(
+                    let (result, db) = common::result(
                         &session.history, db).await;
                     (Json(Message {
                         session: 0,
@@ -200,7 +200,7 @@ async fn update(session: &mut Session, db: BaseConn) -> BaseConn {
     } else {
         (((ordinal - 24) / 2) % 8, ordinal % 2 == 1)
     };
-    let current_word = common::choose_word_common(&session.history, lv);
+    let current_word = common::choose_word(&session.history, lv);
     let (related, mut db) = related(current_word, db).await;
     let (question, candidates, answer, db) = if is_cn2en {
         let ((candidates, answer, question), db) = 

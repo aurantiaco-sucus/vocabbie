@@ -5,7 +5,7 @@ use rocket_db_pools::sqlx::Row;
 use vcbe_core::{Evidence, LV_RANGES};
 use crate::{Base, WithConn};
 
-pub fn choose_word_common(history: &[(u32, bool)], lv: usize) -> u32 {
+pub fn choose_word(history: &[(u32, bool)], lv: usize) -> u32 {
     let mut current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
     while history.iter().any(|(x, _)| *x == current_word) {
         current_word = thread_rng().gen_range(LV_RANGES[lv].clone());
@@ -13,7 +13,23 @@ pub fn choose_word_common(history: &[(u32, bool)], lv: usize) -> u32 {
     current_word
 }
 
-pub async fn result_common(
+pub fn choose_words(history: &[(u32, bool)], lv: usize) -> Vec<u32> {
+    let mut current_words = Vec::new();
+    while current_words.len() < 100 {
+        let mut new_word = thread_rng().gen_range(LV_RANGES[lv].clone());
+        let mut history_contains = history.iter().any(|(x, _)| *x == new_word);
+        let mut current_words_contains = current_words.contains(&new_word);
+        while history_contains || current_words_contains {
+            new_word = thread_rng().gen_range(LV_RANGES[lv].clone());
+            history_contains = history.iter().any(|(x, _)| *x == new_word);
+            current_words_contains = current_words.contains(&new_word);
+        }
+        current_words.push(new_word);
+    }
+    current_words
+}
+
+pub async fn result(
     history: &[(u32, bool)], mut db: Connection<Base>
 ) -> WithConn<HashMap<String, String>> {
     let mut result = HashMap::new();

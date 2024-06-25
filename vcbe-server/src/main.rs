@@ -109,6 +109,7 @@ impl DerefMut for Session {
 pub enum SessionInner {
     Standard(standard::Session),
     Recall(recall::Session),
+    MassRecall(mass_recall::Session),
 }
 
 impl Session {
@@ -157,6 +158,7 @@ pub async fn start(data: Json<Message>, db: BaseConn) -> Json<Message> {
                 "standard" => SessionInner::Standard(standard::create(db).await),
                 "recall" => SessionInner::Recall(recall::create(db, false).await),
                 "recall-tyv" => SessionInner::Recall(recall::create(db, true).await),
+                "recall-mass" => SessionInner::MassRecall(mass_recall::create(db).await),
                 _ => return Json(Message {
                     session: 0,
                     details: HashMap::from([
@@ -188,6 +190,7 @@ pub async fn state(data: Json<Message>, db: BaseConn) -> Json<Message> {
             match &ses.inner {
                 SessionInner::Standard(ses) => standard::state(ses, db).await,
                 SessionInner::Recall(ses) => recall::state(ses, db).await,
+                SessionInner::MassRecall(ses) => mass_recall::state(ses, db).await,
             }
         }
     }
@@ -217,6 +220,8 @@ pub async fn submit(data: Json<Message>, db: BaseConn) -> Json<Message> {
                         standard::submit(ses, db, data).await,
                     SessionInner::Recall(ses) =>
                         recall::submit(ses, db, data).await,
+                    SessionInner::MassRecall(ses) =>
+                        mass_recall::submit(ses, db, data).await,
                 }
             };
             if term {
