@@ -78,12 +78,14 @@ pub struct Evidence {
 
 /// Uniform leveled scaling
 pub fn estimate_uls(evidences: Vec<Evidence>) -> usize {
+    // count the number of answers & ~ of correct answers for each level
     let ratios = evidences.iter().fold([(0, 0); 8], |mut acc, x| {
         acc[x.lv as usize].0 += 1u32;
         acc[x.lv as usize].1 += x.correct as usize;
         acc
     });
     let mut estimate = 0u32;
+    // assume every word can represent each other within the same level
     for (i, (total, correct)) in ratios.iter().enumerate() {
         if *total == 0 { continue; }
         estimate += (LV_COUNTS[i] * *correct / *total as usize) as u32;
@@ -94,6 +96,7 @@ pub fn estimate_uls(evidences: Vec<Evidence>) -> usize {
 /// Reciprocal frequency weighted leveled scaling
 pub fn estimate_rfwls(evidences: Vec<Evidence>) -> usize {
     let one = u128::MAX / 1000_0000;
+    // same as ULS but weight with the reciprocal of frequency
     let ratios = evidences.iter().fold([(0, 0); 8], |mut acc, x| {
         let weight = one / x.freq as u128;
         acc[x.lv as usize].0 += weight;
@@ -159,6 +162,8 @@ pub fn estimate_heu(evidences: Vec<Evidence>) -> usize {
     //     .max_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())
     //     .unwrap().0
     // let total = 9056.0;
+    
+    // use a large number as "one" to avoid precision loss
     let one = u128::MAX / 1000_0000;
     let total: u128 = evidences.iter()
         .map(|x| one / x.freq as u128).sum();
@@ -173,6 +178,7 @@ pub fn estimate_heu(evidences: Vec<Evidence>) -> usize {
 pub fn estimate_tyv(result: &[(&str, bool)], data: &TyvData) -> usize {
     let mut broad = [0.0; 127];
     let mut narrow = [0.0; 608];
+    // in each vector, 1.0 for correct, -1.0 for incorrect, 0.0 for unknown (not tested)
     for (word, recall) in result {
         if let Some(i) = data.broad_toi.get(&word.to_string()) {
             broad[*i] = if *recall { 1.0 } else { -1.0 }
@@ -195,6 +201,8 @@ pub struct TyvData {
 fn tyv_inference(model: &CModule, broad: &[f32], narrow: &[f32]) -> f32 {
     let broad = Tensor::from_slice2(&[broad]);
     let narrow = Tensor::from_slice2(&[narrow]);
+    // run inference on the model, outputting a scalar representing the estimation of the
+    // "known ratio" of the corpus
     let output = model.forward_ts(&[broad, narrow]).unwrap();
     (output.double_value(&[0, 0]) * 45000.0) as f32
 }
